@@ -1,0 +1,23 @@
+{
+  "name": "banking-microfrontend",
+  "private": true,
+  "workspaces": [
+    "shell",
+    "remote-customers",
+    "remote-accounts",
+    "remote-payments",
+    "remote-ledger",
+    "shared"
+  ],
+  "scripts": {
+    "start:remotes": "concurrently \"npm run start --workspace=remote-customers\" \"npm run start --workspace=remote-accounts\" \"npm run start --workspace=remote-payments\" \"npm run start --workspace=remote-ledger\"",
+    "start:shell": "wait-on http://localhost:3001/assets/remoteEntry.js http://localhost:3002/assets/remoteEntry.js http://localhost:3003/assets/remoteEntry.js http://localhost:3004/assets/remoteEntry.js && npm run start --workspace=shell",
+    "start": "concurrently \"npm run start:remotes\" \"npm run start:shell\"",
+    "build": "npm run build --workspaces --if-present",
+    "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "wait-on": "^9.0.4"
+  }
+}

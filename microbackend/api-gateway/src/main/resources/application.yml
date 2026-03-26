@@ -1,0 +1,58 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:3001"
+              - "http://localhost:3002"
+              - "http://localhost:3003"
+              - "http://localhost:3004"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+      routes:
+        - id: customer-service
+          uri: ${CUSTOMER_SERVICE_URL:http://customer-service:8081}
+          predicates:
+            - Path=/api/v1/customers/**
+          filters:
+            - AddRequestHeader=X-Gateway-Source, api-gateway
+
+        - id: account-service
+          uri: ${ACCOUNT_SERVICE_URL:http://account-service:8082}
+          predicates:
+            - Path=/api/v1/accounts/**
+          filters:
+            - AddRequestHeader=X-Gateway-Source, api-gateway
+
+        - id: ledger-service
+          uri: ${LEDGER_SERVICE_URL:http://ledger-service:8083}
+          predicates:
+            - Path=/api/v1/ledger/**
+          filters:
+            - AddRequestHeader=X-Gateway-Source, api-gateway
+
+        - id: payment-service
+          uri: ${PAYMENT_SERVICE_URL:http://payment-service:8084}
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - AddRequestHeader=X-Gateway-Source, api-gateway
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

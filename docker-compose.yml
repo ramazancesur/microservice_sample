@@ -1,0 +1,212 @@
+version: '3.8'
+
+services:
+
+  # ── PostgreSQL databases ────────────────────────────────────────────────────
+
+  postgres-customer:
+    image: postgres:16-alpine
+    container_name: postgres-customer
+    environment:
+      POSTGRES_DB: customer_db
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_customer_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking -d customer_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-account:
+    image: postgres:16-alpine
+    container_name: postgres-account
+    environment:
+      POSTGRES_DB: account_db
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_account_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking -d account_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-ledger:
+    image: postgres:16-alpine
+    container_name: postgres-ledger
+    environment:
+      POSTGRES_DB: ledger_db
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_ledger_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking -d ledger_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-payment:
+    image: postgres:16-alpine
+    container_name: postgres-payment
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_payment_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking -d payment_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── ELK Stack ───────────────────────────────────────────────────────────────
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.14.3
+    container_name: logstash
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    volumes:
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.14.3
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.14.3
+    container_name: filebeat
+    user: root
+    volumes:
+      - ./elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - logstash
+
+  # ── Backend services ────────────────────────────────────────────────────────
+
+  customer-service:
+    build:
+      context: ./microbackend
+      dockerfile: customer-service/Dockerfile
+    container_name: customer-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-customer:5432/customer_db
+      SPRING_DATASOURCE_USERNAME: banking
+      SPRING_DATASOURCE_PASSWORD: banking
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres-customer:
+        condition: service_healthy
+
+  account-service:
+    build:
+      context: ./microbackend
+      dockerfile: account-service/Dockerfile
+    container_name: account-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-account:5432/account_db
+      SPRING_DATASOURCE_USERNAME: banking
+      SPRING_DATASOURCE_PASSWORD: banking
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres-account:
+        condition: service_healthy
+
+  ledger-service:
+    build:
+      context: ./microbackend
+      dockerfile: ledger-service/Dockerfile
+    container_name: ledger-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-ledger:5432/ledger_db
+      SPRING_DATASOURCE_USERNAME: banking
+      SPRING_DATASOURCE_PASSWORD: banking
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres-ledger:
+        condition: service_healthy
+
+  payment-service:
+    build:
+      context: ./microbackend
+      dockerfile: payment-service/Dockerfile
+    container_name: payment-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-payment:5432/payment_db
+      SPRING_DATASOURCE_USERNAME: banking
+      SPRING_DATASOURCE_PASSWORD: banking
+      BANKING_LEDGER_SERVICE_URL: http://ledger-service:8083
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres-payment:
+        condition: service_healthy
+      ledger-service:
+        condition: service_started
+
+  api-gateway:
+    build:
+      context: ./microbackend
+      dockerfile: api-gateway/Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - customer-service
+      - account-service
+      - ledger-service
+      - payment-service
+
+volumes:
+  postgres_customer_data:
+  postgres_account_data:
+  postgres_ledger_data:
+  postgres_payment_data:
+  elasticsearch_data:
