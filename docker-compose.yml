@@ -1,0 +1,46 @@
+services:
+  api-gateway:
+    build:
+      context: ./api-gateway
+    ports:
+      - "80:80"
+    depends_on:
+      - user-service
+      - product-service
+      - order-service
+    networks:
+      - microservice-net
+
+  user-service:
+    build:
+      context: ./services/user-service
+    expose:
+      - "8000"
+    environment:
+      - SERVICE_NAME=user-service
+    networks:
+      - microservice-net
+
+  product-service:
+    build:
+      context: ./services/product-service
+    expose:
+      - "8001"
+    environment:
+      - SERVICE_NAME=product-service
+    networks:
+      - microservice-net
+
+  order-service:
+    build:
+      context: ./services/order-service
+    expose:
+      - "8002"
+    environment:
+      - SERVICE_NAME=order-service
+    networks:
+      - microservice-net
+
+networks:
+  microservice-net:
+    driver: bridge
